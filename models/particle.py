@@ -233,11 +233,9 @@ class RationalParticle:
             pjk for the label
         """
         # we already know the cluster probs, but the feedback has not yet been presented
-        unique_partitions = np.unique(self.partition)
+        unique_partitions = np.unique(self.partition[0 : self.N - 1])
         n_partitions = len(unique_partitions)
-        n_unique_feedback = len(np.unique(self.feedback[0 : self.N]))
-        print("n_partitions = ", n_partitions)
-        print("unique partitions =", unique_partitions)
+        n_unique_feedback = len(np.unique(self.feedback[0 : self.N - 1]))
         if self.N == 1:
             counts_formatted = np.repeat(0, self.n_labels)
             objects_per_cluster = np.repeat(0, self.n_labels)
@@ -245,9 +243,10 @@ class RationalParticle:
             lvls, counts = crosstab(
                 self.partition[0 : (self.N - 1)], self.feedback[0 : (self.N - 1)]
             )
-
+            print("counts = ", counts)
+            print("lvls = ", lvls)
             counts_formatted = np.reshape(
-                np.repeat(0, (len(np.unique(self.partition)) + 1) * self.n_labels),
+                np.repeat(0, (n_partitions + 1) * self.n_labels),
                 (n_partitions + 1, self.n_labels),
             )
             if n_unique_feedback < self.n_labels:
@@ -257,7 +256,7 @@ class RationalParticle:
                         counts_formatted[p, l - 1] += counts[p, idx]
                         idx += 1
             else:
-                counts_formatted = counts
+                counts_formatted = np.vstack((counts, np.repeat(0, self.n_labels)))
             objects_per_cluster = np.reshape(
                 np.repeat(counts_formatted.sum(1), self.n_labels),
                 (n_partitions + 1, self.n_labels),
@@ -277,6 +276,7 @@ class RationalParticle:
         pk = np.empty(self.clusters + 1)
         pfk = np.empty(self.clusters + 1)
 
+        print("nr. clusters is: ", self.clusters)
         for k in range(self.clusters):
             # This loops through the clusters, finding prior and conditional
 
