@@ -115,7 +115,7 @@ class RationalParticle:
         self.clusters = 0
         self.N = 0  # number of stimuli so far
         self.decision = decision
-        self.label_probs = []
+        self.plf = []
 
     def finddistribution(self, k, i, lambdai=None, ai=None, n=None):
         """
@@ -243,8 +243,6 @@ class RationalParticle:
             lvls, counts = crosstab(
                 self.partition[0 : (self.N - 1)], self.feedback[0 : (self.N - 1)]
             )
-            print("counts = ", counts)
-            print("lvls = ", lvls)
             counts_formatted = np.reshape(
                 np.repeat(0, (n_partitions + 1) * self.n_labels),
                 (n_partitions + 1, self.n_labels),
@@ -276,7 +274,6 @@ class RationalParticle:
         pk = np.empty(self.clusters + 1)
         pfk = np.empty(self.clusters + 1)
 
-        print("nr. clusters is: ", self.clusters)
         for k in range(self.clusters):
             # This loops through the clusters, finding prior and conditional
 
@@ -421,14 +418,14 @@ class RationalParticle:
             raise Exception("Invalid decision rule. Valid values are 'Soft' and 'MAP'.")
         # make a prediction on the label for the currently observed stimulus
         plk = self.labelprob()
-        print("plk = ", plk)
-        print("posterior over clusters = ", self.currentposterior)
         K = len(self.currentposterior)
         plf = np.reshape(self.currentposterior, (1, K)) @ np.reshape(
             plk, (K, self.n_labels)
         )
+        if VERBOSE:
+            print("p(l|f) = ", plf)
 
-        self.label_probs.append(plf)
+        self.plf.append(plf)
 
     def findMAPval(self, stimulus, env):
         """Queried value should be -1."""
@@ -653,12 +650,14 @@ def test_anderson_discrete():
         [0, 1, 0],
         [0, 1, 1],
     ]  # Type II
+    stims = np.tile(stims, (10, 1))
     types = "ddd"
     feedback = [1, 1, 1, 1, 2, 2, 2, 2]
+    feedback = np.tile(feedback, 10)
 
     for _ in range(1):
         args = [
-            0.5,
+            0.3,
             np.mean(stims, 0),
             np.var(stims, 0),
             np.ones(len(stims[0])),
@@ -672,7 +671,8 @@ def test_anderson_discrete():
         # random.shuffle(stims)
         for s in stims:
             model.additem_particle(s)
-        print(model.partition)
+        print("partition = ", model.partition)
+        print("plf = ", model.plf)
 
         query = [0] * (len(stims[0]) - 1) + [-1]
         print("Prob vals for ", query)
@@ -684,9 +684,6 @@ def main():
     test_anderson_discrete()
 
 
-# if __name__ != '__main__':
-#    VERBOSE = False
-
 if __name__ == "__main__":
-    VERBOSE = True
+    VERBOSE = False
     main()
