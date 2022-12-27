@@ -8,6 +8,7 @@ import os
 import numpy as np
 import numpy.random as nprand
 import random
+import math
 from collections import Counter
 
 # from itertools import izip
@@ -684,6 +685,25 @@ def main():
     test_anderson_discrete()
 
 
+def fit_ll(params, stimuli, feedback):
+    c = params[0]
+    types = "cc"
+    mu0 = np.mean(stimuli, 0)
+    sigma0 = np.var(stimuli, 0)
+    lambda0 = np.ones(len(stimuli[0]))
+    a0 = np.ones(len(stimuli[0]))
+    n_labels = len(np.unique(feedback))
+    args = [c, mu0, sigma0, lambda0, a0, types, n_labels, feedback]
+    model = RationalParticle(args, decision="MAP")
+
+    ll = 0
+    for idx, stim in enumerate(stimuli):
+        model.additem_particle(stim)
+        ll += math.log(model.plf[-1].flatten("C")[feedback[idx] - 1])
+    return ll
+
+
 if __name__ == "__main__":
     VERBOSE = False
     main()
+
