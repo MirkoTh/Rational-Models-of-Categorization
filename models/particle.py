@@ -10,6 +10,9 @@ import numpy.random as nprand
 import random
 import math
 from collections import Counter
+from functools import partial
+from multiprocessing import Pool
+from tqdm import tqdm
 
 # from itertools import izip
 import scipy.stats.distributions as dist
@@ -700,7 +703,34 @@ def fit_ll(params, stimuli, feedback):
     for idx, stim in enumerate(stimuli):
         model.additem_particle(stim)
         ll += math.log(model.plf[-1].flatten("C")[feedback[idx] - 1])
-    return ll
+    return ll, model.clusters
+
+
+def grid_search_particle(tbl_data):
+    fb = tbl_data["category"].replace({"A": 1, "B": 2, "C": 3})
+    stimuli_subset = tbl_data[["d1i", "d2i"]].to_numpy()
+    feedback_subset = fb.to_numpy()
+    p_id = tbl_data["participant"].iloc[0]
+    c_seq = np.arange(0.025, 0.975, 0.05)
+    lls = list(np.repeat(0, len(c_seq)))
+    Ks = list(np.repeat(0, len(c_seq)))
+    for idx, c in enumerate(c_seq):
+        ll, k = fit_ll([c], stimuli_subset, feedback_subset)
+        lls[idx] = ll
+        Ks[idx] = k
+    d_results = {"id": p_id, "lls": lls, "Ks": Ks}
+    return d_results
+
+
+def multiprocessing_grid_search_particle(tbl_data):
+    list_to_process_no_names = [
+        group for name, group in tbl_data.groupby("participant")
+    ]
+    list_to_process_no_names = list_to_process_no_names[0:6]
+    num_processors = 6
+    p = Pool(processes=num_processors)
+    list_result = p.map(grid_search_particle, tqdm(list_to_process_no_names))
+    return list_result
 
 
 if __name__ == "__main__":
