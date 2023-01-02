@@ -281,40 +281,25 @@ class RationalParticle:
         return:
             pjk for the label
         """
-        # we already know the cluster probs, but the feedback has not yet been presented
-        n_min_feedback = min([self.N - 1, self.N_train])
+        # during transfer, we do not know the labels at all
         unique_partitions = np.unique(self.partition[0 : self.N - 1])
         n_partitions = len(unique_partitions)
-        n_unique_feedback = len(np.unique(self.feedback[0:n_min_feedback]))
         n_added_clusters = 0
-        if self.N == 1:
-            counts_formatted = np.repeat(0, self.n_labels)
-            objects_per_cluster = np.repeat(0, self.n_labels)
-        else:
-            lvls, counts = crosstab(
-                self.partition[0:n_min_feedback], self.feedback[0:n_min_feedback]
-            )
-            n_added_clusters = n_partitions - len(lvls[0])
-            zeros_no_feedback = np.zeros((n_added_clusters, self.n_labels))
 
-            counts_formatted = np.reshape(
-                np.repeat(0, (n_partitions + 1) * self.n_labels),
-                (n_partitions + 1, self.n_labels),
-            )
-            if n_unique_feedback < self.n_labels:
-                for p in lvls[0]:
-                    idx = 0
-                    for l in lvls[1]:
-                        counts_formatted[p, l - 1] += counts[p, idx]
-                        idx += 1
-            else:
-                counts_formatted = np.vstack((counts, np.repeat(0, self.n_labels)))
-            objects_per_cluster = np.reshape(
-                np.repeat(counts_formatted.sum(1), self.n_labels),
-                (n_partitions + 1, self.n_labels),
-            )
+        # crosstab can only be calculated over training stimuli
+        lvls, counts = crosstab(
+            self.partition[0 : self.N_train], self.feedback[0 : self.N_train]
+        )
+        n_added_clusters = n_partitions - len(lvls[0])
+        zeros_no_feedback = np.zeros((n_added_clusters, self.n_labels))
+
+        counts_formatted = np.vstack((counts, np.repeat(0, self.n_labels)))
         if n_added_clusters > 0:
             counts_formatted = np.vstack([counts_formatted, zeros_no_feedback])
+        objects_per_cluster = np.reshape(
+            np.repeat(counts_formatted.sum(1), self.n_labels),
+            (n_partitions + 1, self.n_labels),
+        )
 
         # pjk for the label, therefore plk
         plk = (counts_formatted + self.alpha_label) / (
@@ -808,10 +793,9 @@ def multiprocessing_grid_search_particle(tbl_data):
 
 
 def predict_ll(model, stimuli, feedback):
-
     ll = 0
     for idx, stim in enumerate(stimuli):
-        model.additem_particle(stim)
+        model.additem_particle_prediction(stim)
         ll += math.log(model.plf[-1].flatten("C")[feedback[idx] - 1])
     return ll, model.clusters, model
 
