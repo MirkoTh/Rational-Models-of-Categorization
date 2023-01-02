@@ -6,6 +6,7 @@
 
 import os
 import numpy as np
+import pandas as pd
 import numpy.random as nprand
 import random
 import math
@@ -777,7 +778,7 @@ def grid_search_particle(tbl_data):
         lls[idx] = ll
         Ks[idx] = k
         models[idx] = model
-    d_results = {"id": p_id, "lls": lls, "Ks": Ks, "model": models}
+    d_results = {"id": p_id, "lls": lls, "Ks": Ks, "model": models, "cs": c_seq}
     return d_results
 
 
@@ -792,15 +793,38 @@ def multiprocessing_grid_search_particle(tbl_data):
     return list_result
 
 
-def predict_ll(model, stimuli, feedback):
+def predict_ll(d_pred):
+    stimuli = d_pred["stimuli"]
+    model = d_pred["model"]
+    response = d_pred["response"]
     ll = 0
     for idx, stim in enumerate(stimuli):
         model.additem_particle_prediction(stim)
-        ll += math.log(model.plf[-1].flatten("C")[feedback[idx] - 1])
+        ll += math.log(model.plf[-1].flatten("C")[response[idx] - 1])
     return ll, model.clusters, model
+
+
+def evaluate_grid_vals_prediction(l_result_train):
+    id = l_result_train["id"]
+    tbl_transfer = l_result_train["tbl_transfer"]
+    stimuli = tbl_transfer[["d1i", "d2i"]].to_numpy()
+    response = tbl_transfer["response_int"].to_numpy()
+    df_results = pd.DataFrame({"id": [], "c": [], "ll": []})
+    for m in l_result_train["model"]:
+        d_pred = {"stimuli": stimuli, "response": response, "model": m}
+        ll, K, model = predict_ll(d_pred)
+        result = pd.DataFrame({"id": [id], "c": m.c, "ll": [ll]})
+        df_results = pd.concat([df_results, result])
+    return df_results
+
+
+def multiprocessing_prediction(l_results_train):
+    num_processors = 4
+    p = Pool(processes=num_processors)
+    list_result = p.map(evaluate_grid_vals_prediction, tqdm(l_results_train))
+    return list_result
 
 
 if __name__ == "__main__":
     VERBOSE = False
     main()
-
