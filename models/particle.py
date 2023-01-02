@@ -120,6 +120,10 @@ class RationalParticle:
         self.N = 0  # number of stimuli so far
         self.decision = decision
         self.plf = []
+        self.stims_pred = []
+        self.plf_pred = []
+        self.partition_pred = []
+        self.N_train = 0
 
     def finddistribution(self, k, i, lambdai=None, ai=None, n=None):
         """
@@ -245,8 +249,9 @@ class RationalParticle:
             objects_per_cluster = np.repeat(0, self.n_labels)
         else:
             lvls, counts = crosstab(
-                self.partition[0 : (self.N - 1)], self.feedback[0 : (self.N - 1)]
+                self.partition[0 : self.N - 1], self.feedback[0 : self.N - 1]
             )
+
             counts_formatted = np.reshape(
                 np.repeat(0, (n_partitions + 1) * self.n_labels),
                 (n_partitions + 1, self.n_labels),
@@ -263,6 +268,53 @@ class RationalParticle:
                 np.repeat(counts_formatted.sum(1), self.n_labels),
                 (n_partitions + 1, self.n_labels),
             )
+
+        # pjk for the label, therefore plk
+        plk = (counts_formatted + self.alpha_label) / (
+            objects_per_cluster + self.alpha0_label
+        )
+        return plk
+
+    def labelprob_prediction(self):
+        """Calculate conditional label probability given cluster
+
+        return:
+            pjk for the label
+        """
+        # we already know the cluster probs, but the feedback has not yet been presented
+        n_min_feedback = min([self.N - 1, self.N_train])
+        unique_partitions = np.unique(self.partition[0 : self.N - 1])
+        n_partitions = len(unique_partitions)
+        n_unique_feedback = len(np.unique(self.feedback[0:n_min_feedback]))
+        n_added_clusters = 0
+        if self.N == 1:
+            counts_formatted = np.repeat(0, self.n_labels)
+            objects_per_cluster = np.repeat(0, self.n_labels)
+        else:
+            lvls, counts = crosstab(
+                self.partition[0:n_min_feedback], self.feedback[0:n_min_feedback]
+            )
+            n_added_clusters = n_partitions - len(lvls[0])
+            zeros_no_feedback = np.zeros((n_added_clusters, self.n_labels))
+
+            counts_formatted = np.reshape(
+                np.repeat(0, (n_partitions + 1) * self.n_labels),
+                (n_partitions + 1, self.n_labels),
+            )
+            if n_unique_feedback < self.n_labels:
+                for p in lvls[0]:
+                    idx = 0
+                    for l in lvls[1]:
+                        counts_formatted[p, l - 1] += counts[p, idx]
+                        idx += 1
+            else:
+                counts_formatted = np.vstack((counts, np.repeat(0, self.n_labels)))
+            objects_per_cluster = np.reshape(
+                np.repeat(counts_formatted.sum(1), self.n_labels),
+                (n_partitions + 1, self.n_labels),
+            )
+        if n_added_clusters > 0:
+            counts_formatted = np.vstack([counts_formatted, zeros_no_feedback])
 
         # pjk for the label, therefore plk
         plk = (counts_formatted + self.alpha_label) / (
@@ -406,9 +458,26 @@ class RationalParticle:
             self.partition.append(-1)
         return stimnum
 
-    def additem_particle(self, stim, checkduplicate=False):
+    def additem_particle_prediction(self, stim):
+        """compute log likelihood for stimulus to be predicted;
+         calls additem_particle, but adds info about current stim to prediction details;
+         as no feedback is provided during transfer, nothing can be learned
+         about the relationship between items, clusters, and category labels
+
+        Args:
+            stim (np.array): current stimulus information to predict a label about
         """
-        When the particle filter receives a new item, it appends it  to the
+        self.additem_particle(stim, checkduplicate=False, is_prediction=True)
+        # remove registered item and add to predicted ones
+        self.stims_pred.append(self.stims[-1])
+        # remove winner item
+        self.partition_pred.append(self.partition[-1])
+        # remove plf and add to predicted plfs
+        self.plf_pred.append(self.plf[-1])
+
+    def additem_particle(self, stim, checkduplicate=False, is_prediction=False):
+        """
+        When the particle filter receives a new item, it appends it to the
         list of stims. This function adds the item, registering it first.
         """
         stimnum = self.register_item(stim, checkduplicate=checkduplicate)
@@ -421,7 +490,10 @@ class RationalParticle:
         else:
             raise Exception("Invalid decision rule. Valid values are 'Soft' and 'MAP'.")
         # make a prediction on the label for the currently observed stimulus
-        plk = self.labelprob()
+        if is_prediction:
+            plk = self.labelprob_prediction()
+        else:
+            plk = self.labelprob()
         K = len(self.currentposterior)
         plf = np.reshape(self.currentposterior, (1, K)) @ np.reshape(
             plk, (K, self.n_labels)
@@ -698,27 +770,29 @@ def fit_ll(params, stimuli, feedback):
     n_labels = len(np.unique(feedback))
     args = [c, mu0, sigma0, lambda0, a0, types, n_labels, feedback]
     model = RationalParticle(args, decision="MAP")
+    model.N_train = stimuli.shape[0]
 
     ll = 0
     for idx, stim in enumerate(stimuli):
         model.additem_particle(stim)
         ll += math.log(model.plf[-1].flatten("C")[feedback[idx] - 1])
-    return ll, model.clusters
+    return ll, model.clusters, model
 
 
 def grid_search_particle(tbl_data):
-    fb = tbl_data["category"].replace({"A": 1, "B": 2, "C": 3})
     stimuli_subset = tbl_data[["d1i", "d2i"]].to_numpy()
-    feedback_subset = fb.to_numpy()
+    feedback_subset = tbl_data["category_int"].to_numpy()
     p_id = tbl_data["participant"].iloc[0]
     c_seq = np.arange(0.025, 0.975, 0.05)
     lls = list(np.repeat(0, len(c_seq)))
     Ks = list(np.repeat(0, len(c_seq)))
+    models = list(np.repeat(0, len(c_seq)))
     for idx, c in enumerate(c_seq):
-        ll, k = fit_ll([c], stimuli_subset, feedback_subset)
+        ll, k, model = fit_ll([c], stimuli_subset, feedback_subset)
         lls[idx] = ll
         Ks[idx] = k
-    d_results = {"id": p_id, "lls": lls, "Ks": Ks}
+        models[idx] = model
+    d_results = {"id": p_id, "lls": lls, "Ks": Ks, "model": models}
     return d_results
 
 
@@ -726,11 +800,20 @@ def multiprocessing_grid_search_particle(tbl_data):
     list_to_process_no_names = [
         group for name, group in tbl_data.groupby("participant")
     ]
-    list_to_process_no_names = list_to_process_no_names[0:6]
-    num_processors = 6
+    list_to_process_no_names = list_to_process_no_names[0:4]
+    num_processors = 4
     p = Pool(processes=num_processors)
     list_result = p.map(grid_search_particle, tqdm(list_to_process_no_names))
     return list_result
+
+
+def predict_ll(model, stimuli, feedback):
+
+    ll = 0
+    for idx, stim in enumerate(stimuli):
+        model.additem_particle(stim)
+        ll += math.log(model.plf[-1].flatten("C")[feedback[idx] - 1])
+    return ll, model.clusters, model
 
 
 if __name__ == "__main__":
