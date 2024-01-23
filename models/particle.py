@@ -786,8 +786,8 @@ def multiprocessing_grid_search_particle(tbl_data):
     list_to_process_no_names = [
         group for name, group in tbl_data.groupby("participant")
     ]
-    list_to_process_no_names = list_to_process_no_names[0:4]
-    num_processors = 4
+    list_to_process_no_names = list_to_process_no_names
+    num_processors = 14
     p = Pool(processes=num_processors)
     list_result = p.map(grid_search_particle, tqdm(list_to_process_no_names))
     return list_result
@@ -805,7 +805,7 @@ def predict_ll(d_pred):
 
 
 def evaluate_grid_vals_prediction(l_result_train):
-    id = l_result_train["id"]
+    participant_id = l_result_train["id"]
     tbl_transfer = l_result_train["tbl_transfer"]
     stimuli = tbl_transfer[["d1i", "d2i"]].to_numpy()
     response = tbl_transfer["response_int"].to_numpy()
@@ -813,13 +813,13 @@ def evaluate_grid_vals_prediction(l_result_train):
     for m in l_result_train["model"]:
         d_pred = {"stimuli": stimuli, "response": response, "model": m}
         ll, K, model = predict_ll(d_pred)
-        result = pd.DataFrame({"id": [id], "c": m.c, "ll": [ll]})
+        result = pd.DataFrame({"id": [participant_id], "c": m.c, "ll": [ll]})
         df_results = pd.concat([df_results, result])
     return df_results
 
 
 def multiprocessing_prediction(l_results_train):
-    num_processors = 4
+    num_processors = 7
     p = Pool(processes=num_processors)
     list_result = p.map(evaluate_grid_vals_prediction, tqdm(l_results_train))
     return list_result
